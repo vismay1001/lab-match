@@ -1,69 +1,171 @@
-import Image from "next/image";
+
+"use client";
+
+import { useEffect, useState } from "react";
+
+type Resource = {
+  resource_id: number;
+  name: string;
+  category: string;
+  description: string;
+  is_active: boolean;
+  created_at: string;
+};
 
 export default function Home() {
+  const [resources, setResources] = useState<Resource[]>([]);
+  const [category, setCategory] = useState("All");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    async function fetchResources() {
+      try {
+        setLoading(true);
+        setError("");
+
+        const response = await fetch("/api/resources");
+
+        if (!response.ok) {
+          throw new Error("Could not load resources.");
+        }
+
+        const data = await response.json();
+        setResources(data.resources);
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Something went wrong."
+        );
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchResources();
+  }, []);
+
+  const categories = [
+    "All",
+    ...new Set(resources.map((resource) => resource.category)),
+  ];
+
+  const filteredResources =
+    category === "All"
+      ? resources
+      : resources.filter(
+          (resource) => resource.category === category
+        );
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
+    <main className="min-h-screen bg-slate-950 text-slate-100">
+      <header className="border-b border-slate-800 px-6 py-5">
+        <div className="mx-auto flex max-w-6xl items-center justify-between">
+          <h1 className="text-2xl font-bold tracking-tight">
+            Lab<span className="text-cyan-400">Match</span>
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+          <span className="text-sm text-slate-400">
+            University Resource Portal
+          </span>
+        </div>
+      </header>
+
+      <section className="mx-auto max-w-6xl px-6 py-12">
+        <p className="mb-3 text-sm font-semibold uppercase tracking-widest text-cyan-400">
+          Shared campus resources
+        </p>
+
+        <h2 className="text-4xl font-bold tracking-tight sm:text-5xl">
+          Find your next
+          <br />
+          <span className="text-slate-400">workspace.</span>
+        </h2>
+
+        <p className="mt-4 max-w-2xl text-slate-400">
+          Explore workstations, 3D printers and cameras.
+          Find the right equipment for your project.
+        </p>
+
+        <div className="mt-10 flex flex-wrap gap-3">
+          {categories.map((item) => (
+            <button
+              key={item}
+              onClick={() => setCategory(item)}
+              className={`rounded-full border px-4 py-2 text-sm transition ${
+                category === item
+                  ? "border-cyan-400 bg-cyan-400 text-slate-950"
+                  : "border-slate-700 text-slate-300 hover:border-slate-500"
+              }`}
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+              {item}
+            </button>
+          ))}
+        </div>
+
+        <div className="mb-5 mt-8 flex items-center justify-between">
+          <h3 className="text-xl font-semibold">Available resources</h3>
+          <span className="text-sm text-slate-400">
+            {filteredResources.length} resources
+          </span>
+        </div>
+
+        {loading ? (
+          <p className="py-10 text-slate-400">
+            Loading resources from the database...
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+        ) : error ? (
+          <div className="rounded-xl border border-red-900 bg-red-950/40 p-5 text-red-300">
+            {error}
+          </div>
+        ) : filteredResources.length === 0 ? (
+          <div className="rounded-xl border border-slate-800 p-8 text-slate-400">
+            No resources found in this category.
+          </div>
+        ) : (
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {filteredResources.map((resource) => (
+              <article
+                key={resource.resource_id}
+                className="rounded-2xl border border-slate-800 bg-slate-900 p-6 transition hover:border-cyan-500/60"
+              >
+                <div className="mb-5 flex items-start justify-between gap-3">
+                  <span className="rounded-full bg-slate-800 px-3 py-1 text-xs text-cyan-300">
+                    {resource.category}
+                  </span>
+                  <span className="text-xs text-emerald-400">
+                    Active
+                  </span>
+                </div>
+
+                <h4 className="text-lg font-semibold">
+                  {resource.name}
+                </h4>
+
+                <p className="mt-3 min-h-16 text-sm leading-6 text-slate-400">
+                  {resource.description}
+                </p>
+
+                <div className="mt-6 border-t border-slate-800 pt-4">
+                  <p className="text-xs text-slate-500">
+                    Resource ID: {resource.resource_id}
+                  </p>
+                  <button
+                    onClick={() =>
+                      alert(
+                        `Booking flow for ${resource.name} will be added next.`
+                      )
+                    }
+                    className="mt-4 w-full rounded-lg bg-cyan-400 px-4 py-2.5 font-semibold text-slate-950 transition hover:bg-cyan-300"
+                  >
+                    Book resource
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+    </main>
   );
 }
