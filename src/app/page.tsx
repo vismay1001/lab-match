@@ -95,12 +95,16 @@ export default function Home() {
     setBookingSuccess("");
 
     try {
+      if (!/^[1-9]\d*$/.test(userId)) {
+        throw new Error("Please enter a valid user ID.");
+      }
+
       const start = new Date(startTime);
       const end = new Date(endTime);
 
       if (
-        Number.isNaN(start.getTime()) ||
-        Number.isNaN(end.getTime()) ||
+        !Number.isFinite(start.getTime()) ||
+        !Number.isFinite(end.getTime()) ||
         end.getTime() <= start.getTime()
       ) {
         throw new Error(
@@ -121,9 +125,7 @@ export default function Home() {
         }),
       });
 
-      const data: BookingResponse = await response
-        .json()
-        .catch(() => ({}));
+      const data: BookingResponse = await response.json();
 
       if (!response.ok) {
         throw new Error(
@@ -132,7 +134,9 @@ export default function Home() {
       }
 
       setBookingSuccess(
-        `Booking confirmed! Booking ID: ${data.booking?.booking_id ?? "Created"}`
+        `Booking confirmed! Booking ID: ${
+          data.booking?.booking_id ?? "Created"
+        }`
       );
       setSelectedResource(null);
     } catch (err) {
@@ -149,13 +153,23 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
       <header className="border-b border-slate-800 px-6 py-5">
-        <div className="mx-auto flex max-w-6xl items-center justify-between">
-          <h1 className="text-2xl font-bold tracking-tight">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
+          <a href="/" className="text-2xl font-bold tracking-tight">
             Lab<span className="text-cyan-400">Match</span>
-          </h1>
-          <span className="text-sm text-slate-400">
-            University Resource Portal
-          </span>
+          </a>
+
+          <div className="flex items-center gap-4">
+            <a
+              href="/bookings"
+              className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-cyan-400 hover:text-cyan-300"
+            >
+              My Bookings
+            </a>
+
+            <span className="hidden text-sm text-slate-400 sm:inline">
+              University Resource Portal
+            </span>
+          </div>
         </div>
       </header>
 
@@ -164,11 +178,11 @@ export default function Home() {
           Shared campus resources
         </p>
 
-        <h2 className="text-4xl font-bold tracking-tight sm:text-5xl">
+        <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
           Find your next
           <br />
           <span className="text-slate-400">workspace.</span>
-        </h2>
+        </h1>
 
         <p className="mt-4 max-w-2xl text-slate-400">
           Explore workstations, 3D printers and cameras.
@@ -179,6 +193,7 @@ export default function Home() {
           {categories.map((item) => (
             <button
               key={item}
+              type="button"
               onClick={() => setCategory(item)}
               className={`rounded-full border px-4 py-2 text-sm transition ${
                 category === item
@@ -192,15 +207,25 @@ export default function Home() {
         </div>
 
         {bookingSuccess && (
-          <div className="mt-6 rounded-xl border border-emerald-800 bg-emerald-950/40 p-4 text-emerald-300">
+          <div
+            role="status"
+            className="mt-6 rounded-xl border border-emerald-800 bg-emerald-950/40 p-4 text-emerald-300"
+          >
             {bookingSuccess}
+            <a
+              href="/bookings"
+              className="ml-2 underline underline-offset-4 hover:text-white"
+            >
+              View My Bookings
+            </a>
           </div>
         )}
 
         <div className="mb-5 mt-8 flex items-center justify-between">
-          <h3 className="text-xl font-semibold">
+          <h2 className="text-xl font-semibold">
             Available resources
-          </h3>
+          </h2>
+
           <span className="text-sm text-slate-400">
             {filteredResources.length} resources
           </span>
@@ -211,7 +236,10 @@ export default function Home() {
             Loading resources from the database...
           </p>
         ) : error ? (
-          <div className="rounded-xl border border-red-900 bg-red-950/40 p-5 text-red-300">
+          <div
+            role="alert"
+            className="rounded-xl border border-red-900 bg-red-950/40 p-5 text-red-300"
+          >
             {error}
           </div>
         ) : filteredResources.length === 0 ? (
@@ -229,14 +257,15 @@ export default function Home() {
                   <span className="rounded-full bg-slate-800 px-3 py-1 text-xs text-cyan-300">
                     {resource.category}
                   </span>
+
                   <span className="text-xs text-emerald-400">
                     Active
                   </span>
                 </div>
 
-                <h4 className="text-lg font-semibold">
+                <h3 className="text-lg font-semibold">
                   {resource.name}
-                </h4>
+                </h3>
 
                 <p className="mt-3 min-h-16 text-sm leading-6 text-slate-400">
                   {resource.description}
@@ -248,6 +277,7 @@ export default function Home() {
                   </p>
 
                   <button
+                    type="button"
                     onClick={() => openBookingForm(resource)}
                     className="mt-4 w-full rounded-lg bg-cyan-400 px-4 py-2.5 font-semibold text-slate-950 transition hover:bg-cyan-300"
                   >
@@ -273,12 +303,14 @@ export default function Home() {
                 <p className="text-sm text-cyan-400">
                   Resource reservation
                 </p>
-                <h3
+
+                <h2
                   id="booking-title"
                   className="mt-1 text-2xl font-bold"
                 >
                   {selectedResource.name}
-                </h3>
+                </h2>
+
                 <p className="mt-2 text-sm text-slate-400">
                   {selectedResource.category}
                 </p>
@@ -300,13 +332,14 @@ export default function Home() {
             >
               <div>
                 <label
-                  htmlFor="userId"
+                  htmlFor="bookingUserId"
                   className="mb-2 block text-sm font-medium"
                 >
                   User ID
                 </label>
+
                 <input
-                  id="userId"
+                  id="bookingUserId"
                   type="number"
                   min="1"
                   step="1"
@@ -315,8 +348,9 @@ export default function Home() {
                   onChange={(event) => setUserId(event.target.value)}
                   className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 outline-none focus:border-cyan-400"
                 />
+
                 <p className="mt-1 text-xs text-slate-500">
-                  Demo only: use an existing user ID from the users table.
+                  Demo mode: use an existing user ID.
                 </p>
               </div>
 
@@ -327,6 +361,7 @@ export default function Home() {
                 >
                   Start time
                 </label>
+
                 <input
                   id="startTime"
                   type="datetime-local"
@@ -344,6 +379,7 @@ export default function Home() {
                 >
                   End time
                 </label>
+
                 <input
                   id="endTime"
                   type="datetime-local"

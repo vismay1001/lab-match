@@ -30,7 +30,7 @@ export async function GET(request: Request) {
           u.name AS user_name,
           b.resource_id,
           r.name AS resource_name,
-          r.category,
+          c.name AS category,
           b.start_time,
           b.end_time,
           b.status,
@@ -38,6 +38,7 @@ export async function GET(request: Request) {
        FROM bookings b
        JOIN users u ON u.user_id = b.user_id
        JOIN resources r ON r.resource_id = b.resource_id
+       JOIN categories c ON c.category_id = r.category_id
        WHERE b.user_id = $1
        ORDER BY b.start_time DESC`,
       [userId]
@@ -59,15 +60,23 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  try {
-    const body = await request.json();
+  let body: Record<string, unknown>;
 
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json(
+      { error: "Request body must contain valid JSON." },
+      { status: 400 }
+    );
+  }
+
+  try {
     const userId = Number(body.userId);
     const resourceId = Number(body.resourceId);
     const startTime = body.startTime;
     const endTime = body.endTime;
 
-    // Validate IDs.
     if (
       !Number.isSafeInteger(userId) ||
       userId <= 0 ||
@@ -80,7 +89,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Validate timestamps.
     if (
       typeof startTime !== "string" ||
       typeof endTime !== "string" ||
@@ -107,7 +115,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Insert the booking using parameterized SQL.
     const result = await pool.query(
       `INSERT INTO bookings
          (user_id, resource_id, start_time, end_time, status)
@@ -117,7 +124,7 @@ export async function POST(request: Request) {
        WHERE u.user_id = $1
          AND r.is_active = TRUE
        RETURNING booking_id, user_id, resource_id,
-                 start_time, end_time, status`,
+                 start_time, end_time, status, created_at`,
       [userId, resourceId, start, end]
     );
 
@@ -138,7 +145,6 @@ export async function POST(request: Request) {
   } catch (error: unknown) {
     const dbError = error as { code?: string };
 
-    // PostgreSQL exclusion constraint violation.
     if (dbError.code === "23P01") {
       return NextResponse.json(
         { error: "This resource is already booked for that time slot." },
@@ -146,7 +152,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // PostgreSQL foreign key violation.
     if (dbError.code === "23503") {
       return NextResponse.json(
         { error: "The specified user or resource does not exist." },
@@ -158,6 +163,83 @@ export async function POST(request: Request) {
 
     return NextResponse.json(
       { error: "Unable to create booking." },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(request: Request) {
+  let body: Record<string, unknown>;
+
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json(
+      { error: "Request body must contain valid JSON." },
+      { status: 400 }
+    );
+  }
+
+  const bookingId = Number(body.bookingId);
+  const userId = Number(body.userId);
+
+  if (
+    !Number.isSafeInteger(bookingId) ||
+    bookingId <= 0 ||
+    !Number.isSafeInteger(userId) ||
+    userId <= 0
+  ) {
+    return NextResponse.json(
+      { error: "Valid booking ID and user ID are required." },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const result = await pool.query(
+      `UPDATE bookings
+       SET status = 'cancelled'
+       WHERE booking_id = $1
+         AND user_id = $2
+         AND status IN ('pending', 'confirmed')
+       RETURNING booking_id, user_id, resource_id,
+                 start_time, end_time, status`,
+      [bookingId, userId]
+    );
+
+    if (result.rowCount === 0) {
+      const existing = await pool.query(
+        `SELECT status
+         FROM bookings
+         WHERE booking_id = $1
+           AND user_id = $2`,
+        [bookingId, userId]
+      );
+
+      if (existing.rowCount === 0) {
+        return NextResponse.json(
+          { error: "Booking not found for this user." },
+          { status: 404 }
+        );
+      }
+
+      return NextResponse.json(
+        {
+          error: `This booking cannot be cancelled because its status is '${existing.rows[0].status}'.`,
+        },
+        { status: 409 }
+      );
+    }
+
+    return NextResponse.json({
+      message: "Booking cancelled successfully.",
+      booking: result.rows[0],
+    });
+  } catch (error) {
+    console.error("Booking cancellation failed:", error);
+
+    return NextResponse.json(
+      { error: "Unable to cancel booking." },
       { status: 500 }
     );
   }

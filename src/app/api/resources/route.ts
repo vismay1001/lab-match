@@ -5,21 +5,22 @@ import { pool } from "@/lib/db";
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-
     const category = searchParams.get("category");
 
     const query = `
       SELECT
-        resource_id,
-        name,
-        category,
-        description,
-        is_active,
-        created_at
-      FROM resources
-      WHERE is_active = TRUE
-        AND ($1::text IS NULL OR category = $1)
-      ORDER BY category, name;
+        r.resource_id,
+        r.name,
+        c.name AS category,
+        r.description,
+        r.is_active,
+        r.created_at
+      FROM resources r
+      JOIN categories c
+        ON c.category_id = r.category_id
+      WHERE r.is_active = TRUE
+        AND ($1::text IS NULL OR c.name = $1)
+      ORDER BY c.name, r.name;
     `;
 
     const result = await pool.query(query, [category]);
