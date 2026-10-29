@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type Booking = {
   booking_id: number | string;
@@ -25,7 +25,30 @@ type ApiResponse = {
 };
 
 export default function MyBookingsPage() {
-  const [userId, setUserId] = useState("2");
+  const [userId, setUserId] = useState("");
+  const [userName, setUserName] = useState("");
+
+  useEffect(() => {
+    const raw = localStorage.getItem("labmatch_user");
+    if (!raw) {
+      window.location.href = "/login";
+      return;
+    }
+    try {
+      const user = JSON.parse(raw) as { user_id?: number; name?: string };
+      if (!user.user_id) throw new Error("Invalid user");
+      setUserId(String(user.user_id));
+      setUserName(user.name || "");
+    } catch {
+      localStorage.removeItem("labmatch_user");
+      window.location.href = "/login";
+    }
+  }, []);
+
+  useEffect(() => {
+    if (userId) void loadBookings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(false);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
@@ -173,45 +196,14 @@ export default function MyBookingsPage() {
           that are still pending or confirmed.
         </p>
 
-        <form
-          className="mt-8 flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900 p-5 sm:flex-row sm:items-end"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void loadBookings();
-          }}
-        >
-          <div className="flex-1">
-            <label
-              htmlFor="userId"
-              className="mb-2 block text-sm font-medium"
-            >
-              User ID
-            </label>
-
-            <input
-              id="userId"
-              type="number"
-              min="1"
-              step="1"
-              required
-              value={userId}
-              onChange={(event) => setUserId(event.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-3 outline-none focus:border-cyan-400"
-            />
-
-            <p className="mt-2 text-xs text-slate-500">
-              Demo mode: enter an existing user ID from PostgreSQL.
-            </p>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="rounded-lg bg-cyan-400 px-5 py-3 font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {loading ? "Loading..." : "View bookings"}
+        <p className="mt-3 max-w-2xl text-slate-400">
+          {userName ? `Reservations for ${userName}. ` : ""}Your bookings are loaded automatically.
+        </p>
+        <div className="mt-6 flex justify-end">
+          <button type="button" onClick={() => void loadBookings()} disabled={loading || !userId} className="rounded-lg bg-cyan-400 px-5 py-3 font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:opacity-50">
+            {loading ? "Loading..." : "Refresh bookings"}
           </button>
-        </form>
+        </div>
 
         {error && (
           <div
@@ -245,7 +237,7 @@ export default function MyBookingsPage() {
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-8 text-center">
             <h3 className="font-semibold">No bookings to display</h3>
             <p className="mt-2 text-sm text-slate-400">
-              Enter a user ID and select View bookings to load reservations.
+              You have no reservations yet. Browse resources to make your first booking.
             </p>
           </div>
         ) : (

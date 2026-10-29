@@ -1,26 +1,333 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f4f6f8;
+  --foreground: #17212b;
+  --surface: #ffffff;
+  --border: #dce3e8;
+  --muted: #637181;
+  --navy: #173b57;
+  --teal: #167d80;
+  --teal-hover: #12696c;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: Arial, Helvetica, sans-serif;
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--background);
+  color-scheme: light;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  margin: 0;
+  background: var(--background) !important;
+  color: var(--foreground) !important;
   font-family: Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+/* LabMatch light institutional palette: override existing utility colours only. */
+.bg-slate-950 {
+  background-color: #f4f6f8 !important;
+}
+
+.bg-slate-900 {
+  background-color: #ffffff !important;
+}
+
+.bg-slate-800 {
+  background-color: #edf2f5 !important;
+}
+
+.bg-slate-700 {
+  background-color: #e3e9ee !important;
+}
+
+.bg-slate-600 {
+  background-color: #cbd5dd !important;
+}
+
+.text-slate-100 {
+  color: #17212b !important;
+}
+
+.text-slate-300 {
+  color: #465666 !important;
+}
+
+.text-slate-400 {
+  color: #637181 !important;
+}
+
+.text-slate-500 {
+  color: #778593 !important;
+}
+
+.text-slate-200 {
+  color: #263746 !important;
+}
+
+.text-cyan-400,
+.text-cyan-300 {
+  color: #167d80 !important;
+}
+
+.border-slate-800 {
+  border-color: #dce3e8 !important;
+}
+
+.border-slate-700 {
+  border-color: #d4dde4 !important;
+}
+
+.border-slate-600 {
+  border-color: #c5d0d9 !important;
+}
+
+.border-cyan-400 {
+  border-color: #167d80 !important;
+}
+
+.bg-cyan-400 {
+  background-color: #167d80 !important;
+  color: #ffffff !important;
+}
+
+.bg-cyan-400:hover,
+.hover\:bg-cyan-300:hover {
+  background-color: #12696c !important;
+  color: #ffffff !important;
+}
+
+.hover\:text-cyan-300:hover,
+.hover\:text-cyan-400:hover {
+  color: #12696c !important;
+}
+
+.hover\:border-cyan-400:hover {
+  border-color: #167d80 !important;
+}
+
+.bg-emerald-400 {
+  background-color: #236b57 !important;
+  color: #ffffff !important;
+}
+
+.hover\:bg-emerald-300:hover {
+  background-color: #1b5847 !important;
+  color: #ffffff !important;
+}
+
+.text-emerald-300 {
+  color: #236b57 !important;
+}
+
+.border-emerald-800 {
+  border-color: #b9d9ce !important;
+}
+
+.bg-emerald-950\/40 {
+  background-color: #edf7f2 !important;
+}
+
+.border-amber-800 {
+  border-color: #e8d5a8 !important;
+}
+
+.bg-amber-950\/30 {
+  background-color: #fff8e8 !important;
+}
+
+.text-amber-200,
+.text-amber-300 {
+  color: #795719 !important;
+}
+
+.border-red-900,
+.border-red-800 {
+  border-color: #e7c3c3 !important;
+}
+
+.text-red-300 {
+  color: #a43d3d !important;
+}
+
+.bg-red-950\/40 {
+  background-color: #fff1f1 !important;
+}
+
+.bg-black\/70 {
+  background-color: rgb(18 30 41 / 58%) !important;
+}
+
+/* More restrained geometry and spacing for the existing layout. */
+header {
+  background: rgb(255 255 255 / 94%);
+}
+
+main.min-h-screen {
+  background: #f4f6f8 !important;
+  color: #17212b !important;
+}
+
+main > header {
+  border-color: #dce3e8 !important;
+  box-shadow: 0 1px 0 rgb(23 59 87 / 3%);
+}
+
+main > header > div,
+main > section {
+  max-width: 1160px;
+}
+
+main > section {
+  padding-top: 42px;
+  padding-bottom: 56px;
+}
+
+main > section > p:first-child {
+  letter-spacing: 0.12em;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+h1,
+h2,
+h3 {
+  color: #172d3d;
+  letter-spacing: -0.025em;
+}
+
+h1 {
+  line-height: 1.12;
+}
+
+form.rounded-2xl,
+article.rounded-2xl,
+article.rounded-xl,
+section[role="dialog"] {
+  border-color: #dce3e8 !important;
+  box-shadow: 0 3px 12px rgb(23 45 61 / 4%);
+}
+
+form.rounded-2xl {
+  border-radius: 14px !important;
+}
+
+article.rounded-2xl,
+article.rounded-xl {
+  border-radius: 12px !important;
+  transition: box-shadow 140ms ease, border-color 140ms ease;
+}
+
+article.rounded-2xl:hover,
+article.rounded-xl:hover {
+  border-color: #c4d4da !important;
+  box-shadow: 0 5px 18px rgb(23 45 61 / 7%);
+}
+
+input,
+textarea,
+select {
+  color: #17212b !important;
+  background-color: #ffffff !important;
+  border-color: #cbd5dd !important;
+  border-radius: 8px !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #8995a1 !important;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: #167d80 !important;
+  outline: 3px solid rgb(22 125 128 / 12%);
+  outline-offset: 0;
+}
+
+select option {
+  background: #ffffff;
+  color: #17212b;
+}
+
+button.rounded-xl,
+button.rounded-lg,
+a.rounded-lg {
+  border-radius: 8px !important;
+  font-weight: 600;
+}
+
+button.bg-cyan-400,
+button.bg-emerald-400 {
+  box-shadow: none !important;
+}
+
+button.bg-cyan-400:focus-visible,
+button.bg-emerald-400:focus-visible,
+button:focus-visible,
+a:focus-visible {
+  outline: 3px solid rgb(22 125 128 / 28%);
+  outline-offset: 2px;
+}
+
+section[role="dialog"] {
+  background: #ffffff !important;
+  border-radius: 14px !important;
+}
+
+main > section > section {
+  scroll-margin-top: 24px;
+}
+
+@media (max-width: 640px) {
+  main > header {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+
+  main > section {
+    padding: 28px 16px 40px !important;
+  }
+
+  h1 {
+    font-size: clamp(2rem, 9vw, 3rem) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

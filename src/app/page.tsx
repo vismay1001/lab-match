@@ -80,7 +80,20 @@ export default function Home() {
   const [pageError, setPageError] = useState("");
 
   const [task, setTask] = useState("");
-  const [userId, setUserId] = useState("1");
+  const [userId, setUserId] = useState("");
+  const [loggedInName, setLoggedInName] = useState("");
+
+  useEffect(() => {
+    const raw = localStorage.getItem("labmatch_user");
+    if (!raw) return;
+    try {
+      const user = JSON.parse(raw) as { user_id?: number; name?: string };
+      if (user.user_id) setUserId(String(user.user_id));
+      if (user.name) setLoggedInName(user.name);
+    } catch {
+      localStorage.removeItem("labmatch_user");
+    }
+  }, []);
   const [startDate, setStartDate] = useState(today);
   const [startTime, setStartTime] = useState("10:00");
   const initialEnd = addMinutes(today, "10:00", 60);
@@ -251,8 +264,8 @@ export default function Home() {
     event.preventDefault();
     if (!bookingResource) return;
 
-    if (!/^[1-9]\d*$/.test(userId)) {
-      setBookingError("Enter a valid existing user ID.");
+    if (!userId) {
+      window.location.href = "/login";
       return;
     }
 
@@ -321,9 +334,17 @@ export default function Home() {
             >
               My Bookings
             </a>
-            <span className="hidden text-sm text-slate-400 sm:inline">
-              University Resource Portal
-            </span>
+            {loggedInName ? (
+              <>
+                <span className="hidden text-sm text-slate-400 sm:inline">Hi, {loggedInName}</span>
+                <button type="button" onClick={() => { localStorage.removeItem("labmatch_user"); window.location.href = "/login"; }} className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:border-cyan-400">Log out</button>
+              </>
+            ) : (
+              <>
+                <a href="/login" className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:border-cyan-400">Log in</a>
+                <a href="/register" className="rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-300">Register</a>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -656,21 +677,6 @@ export default function Home() {
             </p>
 
             <form onSubmit={confirmBooking} className="mt-5 space-y-4">
-              <div>
-                <label htmlFor="userId" className="mb-2 block text-sm font-medium">
-                  User ID
-                </label>
-                <input
-                  id="userId"
-                  type="number"
-                  min="1"
-                  step="1"
-                  required
-                  value={userId}
-                  onChange={(event) => setUserId(event.target.value)}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-3 outline-none focus:border-cyan-400"
-                />
-              </div>
 
               {bookingError && (
                 <p role="alert" className="rounded-lg border border-red-800 bg-red-950/40 p-3 text-sm text-red-300">
