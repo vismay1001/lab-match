@@ -2,6 +2,62 @@
 import { NextResponse } from "next/server";
 import { pool } from "@/lib/db";
 
+export async function GET(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const userIdParam = searchParams.get("userId");
+
+    if (!userIdParam || !/^[1-9]\d*$/.test(userIdParam)) {
+      return NextResponse.json(
+        { error: "A valid userId is required." },
+        { status: 400 }
+      );
+    }
+
+    const userId = Number(userIdParam);
+
+    if (!Number.isSafeInteger(userId)) {
+      return NextResponse.json(
+        { error: "Invalid userId." },
+        { status: 400 }
+      );
+    }
+
+    const result = await pool.query(
+      `SELECT
+          b.booking_id,
+          b.user_id,
+          u.name AS user_name,
+          b.resource_id,
+          r.name AS resource_name,
+          r.category,
+          b.start_time,
+          b.end_time,
+          b.status,
+          b.created_at
+       FROM bookings b
+       JOIN users u ON u.user_id = b.user_id
+       JOIN resources r ON r.resource_id = b.resource_id
+       WHERE b.user_id = $1
+       ORDER BY b.start_time DESC`,
+      [userId]
+    );
+
+    return NextResponse.json({
+      success: true,
+      count: result.rowCount,
+      bookings: result.rows,
+    });
+  } catch (error) {
+    console.error("Failed to retrieve bookings:", error);
+
+    return NextResponse.json(
+      { error: "Unable to retrieve bookings." },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
