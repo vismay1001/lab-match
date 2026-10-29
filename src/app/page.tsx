@@ -3,64 +3,127 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 
+const FASTAPI_URL =
+  process.env.NEXT_PUBLIC_FASTAPI_URL || "http://localhost:8000";
+
 type Resource = {
   resource_id: number;
   name: string;
   category: string;
   description: string;
-  is_active: boolean;
-  created_at: string;
+  capabilities?: string;
+  specifications?: Record<string, unknown>;
+  is_active?: boolean;
 };
 
-type BookingResponse = {
-  message?: string;
-  error?: string;
-  booking?: {
-    booking_id: number;
-  };
+type Recommendation = Resource & {
+  similarity_distance?: number;
+  recommendation_reason?: string;
 };
+
+type ApiResponse = {
+  detail?: string;
+  error?: string;
+  code?: string;
+  booking?: { booking_id: number };
+  recommendations?: Recommendation[];
+  workload_profile?: {
+    name: string;
+    minimum_vram_gb: number;
+    reason: string;
+    excluded_resources: string[];
+  } | null;
+};
+
+function dateString(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function timeLabel(value: string) {
+  const [hours, minutes] = value.split(":").map(Number);
+  const date = new Date();
+  date.setHours(hours, minutes, 0, 0);
+  return date.toLocaleTimeString("en-IN", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
+function addMinutes(date: string, time: string, minutes: number) {
+  const value = new Date(`${date}T${time}:00`);
+  value.setMinutes(value.getMinutes() + minutes);
+  return {
+    date: dateString(value),
+    time: `${String(value.getHours()).padStart(2, "0")}:${String(
+      value.getMinutes()
+    ).padStart(2, "0")}`,
+  };
+}
+
+const TIMES = Array.from({ length: 48 }, (_, index) => {
+  const hour = Math.floor(index / 2);
+  const minute = index % 2 === 0 ? "00" : "30";
+  const value = `${String(hour).padStart(2, "0")}:${minute}`;
+  return { value, label: timeLabel(value) };
+});
 
 export default function Home() {
+  const today = dateString(new Date());
+
   const [resources, setResources] = useState<Resource[]>([]);
   const [category, setCategory] = useState("All");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [pageError, setPageError] = useState("");
 
-  const [selectedResource, setSelectedResource] =
-    useState<Resource | null>(null);
+  const [task, setTask] = useState("");
   const [userId, setUserId] = useState("1");
-  const [startTime, setStartTime] = useState("");
-  const [endTime, setEndTime] = useState("");
+  const [startDate, setStartDate] = useState(today);
+  const [startTime, setStartTime] = useState("10:00");
+  const initialEnd = addMinutes(today, "10:00", 60);
+  const [endDate, setEndDate] = useState(initialEnd.date);
+  const [endTime, setEndTime] = useState(initialEnd.time);
+
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState("");
+  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [profileMessage, setProfileMessage] = useState("");
+  const [excludedResources, setExcludedResources] = useState<string[]>([]);
+  const [hasSearched, setHasSearched] = useState(false);
+
+  const [bookingResource, setBookingResource] =
+    useState<Recommendation | null>(null);
   const [bookingLoading, setBookingLoading] = useState(false);
   const [bookingError, setBookingError] = useState("");
-  const [bookingSuccess, setBookingSuccess] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+
+  const start = new Date(`${startDate}T${startTime}:00`);
+  const end = new Date(`${endDate}T${endTime}:00`);
+  const validRange =
+    Number.isFinite(start.getTime()) &&
+    Number.isFinite(end.getTime()) &&
+    end.getTime() > start.getTime();
 
   useEffect(() => {
-    async function fetchResources() {
+    async function loadResources() {
       try {
-        setLoading(true);
-        setError("");
-
         const response = await fetch("/api/resources");
-
-        if (!response.ok) {
-          throw new Error("Could not load resources.");
-        }
-
+        if (!response.ok) throw new Error("Unable to load resources.");
         const data = await response.json();
-        setResources(data.resources);
+        setResources(data.resources ?? []);
       } catch (err) {
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Something went wrong."
+        setPageError(
+          err instanceof Error ? err.message : "Unable to load resources."
         );
       } finally {
         setLoading(false);
       }
     }
 
-    fetchResources();
+    void loadResources();
   }, []);
 
   const categories = [
@@ -71,79 +134,173 @@ export default function Home() {
   const filteredResources =
     category === "All"
       ? resources
-      : resources.filter(
-          (resource) => resource.category === category
-        );
+      : resources.filter((resource) => resource.category === category);
 
-  function openBookingForm(resource: Resource) {
-    setSelectedResource(resource);
-    setBookingError("");
-    setBookingSuccess("");
-    setStartTime("");
-    setEndTime("");
+  function updateStartDate(value: string) {
+    setStartDate(value);
+    const currentStart = new Date(`${value}T${startTime}:00`);
+    const currentEnd = new Date(`${endDate}T${endTime}:00`);
+
+    if (
+      Number.isFinite(currentStart.getTime()) &&
+      Number.isFinite(currentEnd.getTime()) &&
+      currentEnd <= currentStart
+    ) {
+      const next = addMinutes(value, startTime, 60);
+      setEndDate(next.date);
+      setEndTime(next.time);
+    }
   }
 
-  async function handleBookingSubmit(
-    event: FormEvent<HTMLFormElement>
-  ) {
+  function updateStartTime(value: string) {
+    setStartTime(value);
+    const currentStart = new Date(`${startDate}T${value}:00`);
+    const currentEnd = new Date(`${endDate}T${endTime}:00`);
+
+    if (
+      Number.isFinite(currentStart.getTime()) &&
+      Number.isFinite(currentEnd.getTime()) &&
+      currentEnd <= currentStart
+    ) {
+      const next = addMinutes(startDate, value, 60);
+      setEndDate(next.date);
+      setEndTime(next.time);
+    }
+  }
+
+  function setDuration(minutes: number) {
+    const next = addMinutes(startDate, startTime, minutes);
+    setEndDate(next.date);
+    setEndTime(next.time);
+  }
+
+  async function recommendResources(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!selectedResource) return;
+    if (task.trim().length < 3) {
+      setSearchError("Describe your task in a few words.");
+      return;
+    }
+
+    if (!validRange) {
+      setSearchError("End time must be later than start time.");
+      return;
+    }
+
+    setSearching(true);
+    setSearchError("");
+    setProfileMessage("");
+    setExcludedResources([]);
+    setRecommendations([]);
+    setHasSearched(false);
+    setSuccessMessage("");
+
+    try {
+      const response = await fetch(`${FASTAPI_URL}/recommend-resources`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: task.trim(),
+          start_time: start.toISOString(),
+          end_time: end.toISOString(),
+          limit: 10,
+        }),
+      });
+
+      const data: ApiResponse = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.detail || "Could not generate recommendations."
+        );
+      }
+
+      setRecommendations(data.recommendations ?? []);
+
+      if (data.workload_profile) {
+        setProfileMessage(data.workload_profile.reason);
+        setExcludedResources(
+          data.workload_profile.excluded_resources ?? []
+        );
+      }
+
+      if (!data.recommendations?.length) {
+        setSearchError(
+          "No eligible resources are available for this task and time slot. Try another time or a different task description."
+        );
+      }
+
+      setHasSearched(true);
+    } catch (err) {
+      setSearchError(
+        err instanceof Error
+          ? err.message
+          : "Could not connect to the recommendation service."
+      );
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  function openBooking(resource: Recommendation) {
+    setBookingResource(resource);
+    setBookingError("");
+  }
+
+  async function confirmBooking(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!bookingResource) return;
+
+    if (!/^[1-9]\d*$/.test(userId)) {
+      setBookingError("Enter a valid existing user ID.");
+      return;
+    }
+
+    if (!validRange) {
+      setBookingError("Choose a valid start and end time.");
+      return;
+    }
 
     setBookingLoading(true);
     setBookingError("");
-    setBookingSuccess("");
 
     try {
-      if (!/^[1-9]\d*$/.test(userId)) {
-        throw new Error("Please enter a valid user ID.");
-      }
-
-      const start = new Date(startTime);
-      const end = new Date(endTime);
-
-      if (
-        !Number.isFinite(start.getTime()) ||
-        !Number.isFinite(end.getTime()) ||
-        end.getTime() <= start.getTime()
-      ) {
-        throw new Error(
-          "Please select a valid time range. End time must be after start time."
-        );
-      }
-
       const response = await fetch("/api/bookings", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId: Number(userId),
-          resourceId: selectedResource.resource_id,
+          resourceId: bookingResource.resource_id,
           startTime: start.toISOString(),
           endTime: end.toISOString(),
         }),
       });
 
-      const data: BookingResponse = await response.json();
+      const data: ApiResponse = await response.json();
 
       if (!response.ok) {
         throw new Error(
-          data.error || "Unable to create booking."
+          data.error ||
+            (data.code === "USER_BOOKING_CONFLICT"
+              ? "You already have a booking during this time."
+              : "This resource is no longer available for that time.")
         );
       }
 
-      setBookingSuccess(
-        `Booking confirmed! Booking ID: ${
-          data.booking?.booking_id ?? "Created"
-        }`
+      setSuccessMessage(
+        `Booking confirmed! Booking ID: ${data.booking?.booking_id ?? "Created"}`
       );
-      setSelectedResource(null);
+      setBookingResource(null);
+
+      // Refresh recommendations because resource availability may have changed.
+      setRecommendations((current) =>
+        current.filter(
+          (item) => item.resource_id !== bookingResource.resource_id
+        )
+      );
     } catch (err) {
       setBookingError(
-        err instanceof Error
-          ? err.message
-          : "Something went wrong while booking."
+        err instanceof Error ? err.message : "Booking failed."
       );
     } finally {
       setBookingLoading(false);
@@ -157,15 +314,13 @@ export default function Home() {
           <a href="/" className="text-2xl font-bold tracking-tight">
             Lab<span className="text-cyan-400">Match</span>
           </a>
-
           <div className="flex items-center gap-4">
             <a
               href="/bookings"
-              className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-cyan-400 hover:text-cyan-300"
+              className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:border-cyan-400 hover:text-cyan-300"
             >
               My Bookings
             </a>
-
             <span className="hidden text-sm text-slate-400 sm:inline">
               University Resource Portal
             </span>
@@ -175,244 +330,367 @@ export default function Home() {
 
       <section className="mx-auto max-w-6xl px-6 py-12">
         <p className="mb-3 text-sm font-semibold uppercase tracking-widest text-cyan-400">
-          Shared campus resources
+          Intelligent campus resource booking
         </p>
-
         <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
-          Find your next
+          What are you
           <br />
-          <span className="text-slate-400">workspace.</span>
+          <span className="text-slate-400">planning to do?</span>
         </h1>
-
         <p className="mt-4 max-w-2xl text-slate-400">
-          Explore workstations, 3D printers and cameras.
-          Find the right equipment for your project.
+          Describe your project. LabMatch matches your task against resource
+          capabilities, filters unsuitable hardware, and checks availability.
         </p>
 
-        <div className="mt-10 flex flex-wrap gap-3">
-          {categories.map((item) => (
-            <button
-              key={item}
-              type="button"
-              onClick={() => setCategory(item)}
-              className={`rounded-full border px-4 py-2 text-sm transition ${
-                category === item
-                  ? "border-cyan-400 bg-cyan-400 text-slate-950"
-                  : "border-slate-700 text-slate-300 hover:border-slate-500"
-              }`}
-            >
-              {item}
-            </button>
-          ))}
-        </div>
+        <form
+          onSubmit={recommendResources}
+          className="mt-9 rounded-2xl border border-slate-800 bg-slate-900 p-5 sm:p-7"
+        >
+          <label htmlFor="task" className="mb-2 block font-medium">
+            Describe your task
+          </label>
+          <textarea
+            id="task"
+            rows={3}
+            maxLength={2000}
+            required
+            value={task}
+            onChange={(event) => setTask(event.target.value)}
+            placeholder="Example: Train a CNN for image classification using PyTorch."
+            className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none placeholder:text-slate-500 focus:border-cyan-400"
+          />
 
-        {bookingSuccess && (
-          <div
-            role="status"
-            className="mt-6 rounded-xl border border-emerald-800 bg-emerald-950/40 p-4 text-emerald-300"
+          <p className="mb-5 mt-2 text-xs text-slate-500">
+            Examples: introductory ML, CNN training, LLM fine-tuning, 3D rendering.
+          </p>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label htmlFor="startDate" className="mb-2 block text-sm font-medium">
+                Start date
+              </label>
+              <input
+                id="startDate"
+                type="date"
+                min={today}
+                required
+                value={startDate}
+                onChange={(event) => updateStartDate(event.target.value)}
+                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-3 outline-none focus:border-cyan-400"
+              />
+            </div>
+            <div>
+              <label htmlFor="startTime" className="mb-2 block text-sm font-medium">
+                Start time
+              </label>
+              <select
+                id="startTime"
+                value={startTime}
+                onChange={(event) => updateStartTime(event.target.value)}
+                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-3 outline-none focus:border-cyan-400"
+              >
+                {TIMES.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="endDate" className="mb-2 block text-sm font-medium">
+                End date
+              </label>
+              <input
+                id="endDate"
+                type="date"
+                min={startDate || today}
+                required
+                value={endDate}
+                onChange={(event) => setEndDate(event.target.value)}
+                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-3 outline-none focus:border-cyan-400"
+              />
+            </div>
+            <div>
+              <label htmlFor="endTime" className="mb-2 block text-sm font-medium">
+                End time
+              </label>
+              <select
+                id="endTime"
+                value={endTime}
+                onChange={(event) => setEndTime(event.target.value)}
+                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-3 outline-none focus:border-cyan-400"
+              >
+                {TIMES.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            {[
+              { label: "30 minutes", value: 30 },
+              { label: "1 hour", value: 60 },
+              { label: "2 hours", value: 120 },
+            ].map((duration) => (
+              <button
+                key={duration.value}
+                type="button"
+                onClick={() => setDuration(duration.value)}
+                className="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:border-cyan-400 hover:text-cyan-300"
+              >
+                {duration.label}
+              </button>
+            ))}
+          </div>
+
+          {!validRange && (
+            <p className="mt-3 text-sm text-amber-300">
+              End time must be later than start time.
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={searching || !validRange}
+            className="mt-6 w-full rounded-xl bg-cyan-400 px-5 py-3 font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:opacity-50 sm:w-auto"
           >
-            {bookingSuccess}
-            <a
-              href="/bookings"
-              className="ml-2 underline underline-offset-4 hover:text-white"
-            >
+            {searching ? "Finding suitable resources..." : "Find my resources"}
+          </button>
+        </form>
+
+        {successMessage && (
+          <div className="mt-6 rounded-xl border border-emerald-800 bg-emerald-950/40 p-4 text-emerald-300">
+            {successMessage}{" "}
+            <a href="/bookings" className="underline">
               View My Bookings
             </a>
           </div>
         )}
 
-        <div className="mb-5 mt-8 flex items-center justify-between">
-          <h2 className="text-xl font-semibold">
-            Available resources
-          </h2>
-
-          <span className="text-sm text-slate-400">
-            {filteredResources.length} resources
-          </span>
-        </div>
-
-        {loading ? (
-          <p className="py-10 text-slate-400">
-            Loading resources from the database...
-          </p>
-        ) : error ? (
-          <div
-            role="alert"
-            className="rounded-xl border border-red-900 bg-red-950/40 p-5 text-red-300"
-          >
-            {error}
+        {searchError && (
+          <div role="status" className="mt-6 rounded-xl border border-amber-800 bg-amber-950/30 p-4 text-amber-200">
+            {searchError}
           </div>
-        ) : filteredResources.length === 0 ? (
-          <div className="rounded-xl border border-slate-800 p-8 text-slate-400">
-            No resources found in this category.
+        )}
+
+        {hasSearched && profileMessage && (
+          <div className="mt-6 rounded-xl border border-slate-800 bg-slate-900 p-4">
+            <p className="font-medium text-cyan-300">Capability filter applied</p>
+            <p className="mt-1 text-sm text-slate-300">{profileMessage}</p>
+            {excludedResources.length > 0 && (
+              <p className="mt-2 text-sm text-slate-400">
+                Excluded for insufficient or unknown VRAM: {excludedResources.join(", ")}
+              </p>
+            )}
           </div>
-        ) : (
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {filteredResources.map((resource) => (
-              <article
-                key={resource.resource_id}
-                className="rounded-2xl border border-slate-800 bg-slate-900 p-6 transition hover:border-cyan-500/60"
-              >
-                <div className="mb-5 flex items-start justify-between gap-3">
-                  <span className="rounded-full bg-slate-800 px-3 py-1 text-xs text-cyan-300">
-                    {resource.category}
-                  </span>
+        )}
 
-                  <span className="text-xs text-emerald-400">
-                    Active
-                  </span>
-                </div>
-
-                <h3 className="text-lg font-semibold">
-                  {resource.name}
-                </h3>
-
-                <p className="mt-3 min-h-16 text-sm leading-6 text-slate-400">
-                  {resource.description}
+        {recommendations.length > 0 && (
+          <section className="mt-10">
+            <div className="mb-5 flex items-end justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-widest text-cyan-400">
+                  ChromaDB + capability filtering
                 </p>
+                <h2 className="mt-2 text-2xl font-bold">
+                  Recommended for your task
+                </h2>
+              </div>
+              <span className="text-sm text-slate-400">
+                {recommendations.length} matches
+              </span>
+            </div>
 
-                <div className="mt-6 border-t border-slate-800 pt-4">
-                  <p className="text-xs text-slate-500">
-                    Resource ID: {resource.resource_id}
+            <div className="grid gap-5 md:grid-cols-2">
+              {recommendations.map((resource, index) => (
+                <article
+                  key={resource.resource_id}
+                  className="rounded-2xl border border-slate-800 bg-slate-900 p-6"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="rounded-full bg-slate-800 px-3 py-1 text-xs text-cyan-300">
+                      {resource.category}
+                    </span>
+                    <span className="text-sm text-slate-500">
+                      Match #{index + 1}
+                    </span>
+                  </div>
+                  <h3 className="mt-4 text-xl font-semibold">{resource.name}</h3>
+                  <p className="mt-3 text-sm leading-6 text-slate-400">
+                    {resource.description}
+                  </p>
+
+                  {resource.capabilities && (
+                    <p className="mt-4 text-sm text-slate-300">
+                      <span className="font-medium text-cyan-300">Capabilities: </span>
+                      {resource.capabilities}
+                    </p>
+                  )}
+
+                  {resource.specifications &&
+                    Object.keys(resource.specifications).length > 0 && (
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {Object.entries(resource.specifications)
+                          .filter(([key]) => key !== "workloads")
+                          .map(([key, value]) => (
+                            <span
+                              key={key}
+                              className="rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-300"
+                            >
+                              {key.replaceAll("_", " ")}: {String(value)}
+                            </span>
+                          ))}
+                      </div>
+                    )}
+
+                  <p className="mt-4 text-xs leading-5 text-slate-500">
+                    {resource.recommendation_reason ||
+                      "Ranked by semantic relevance and filtered by the detected capability profile."}
                   </p>
 
                   <button
                     type="button"
-                    onClick={() => openBookingForm(resource)}
-                    className="mt-4 w-full rounded-lg bg-cyan-400 px-4 py-2.5 font-semibold text-slate-950 transition hover:bg-cyan-300"
+                    onClick={() => openBooking(resource)}
+                    className="mt-5 w-full rounded-lg bg-cyan-400 px-4 py-3 font-semibold text-slate-950 hover:bg-cyan-300"
                   >
-                    Book resource
+                    Select and book
                   </button>
-                </div>
-              </article>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
+
+        <section className="mt-14">
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-bold">Browse all resources</h2>
+              <p className="mt-1 text-sm text-slate-400">
+                Browse the inventory directly if you already know what you need.
+              </p>
+            </div>
+            <span className="text-sm text-slate-400">
+              {filteredResources.length} resources
+            </span>
+          </div>
+
+          <div className="mb-5 flex flex-wrap gap-2">
+            {categories.map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setCategory(item)}
+                className={`rounded-full border px-4 py-2 text-sm ${
+                  category === item
+                    ? "border-cyan-400 bg-cyan-400 text-slate-950"
+                    : "border-slate-700 text-slate-300 hover:border-slate-500"
+                }`}
+              >
+                {item}
+              </button>
             ))}
           </div>
-        )}
+
+          {loading ? (
+            <p className="py-8 text-slate-400">Loading resources...</p>
+          ) : pageError ? (
+            <p className="rounded-xl border border-red-900 p-4 text-red-300">
+              {pageError}
+            </p>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {filteredResources.map((resource) => (
+                <article
+                  key={resource.resource_id}
+                  className="rounded-xl border border-slate-800 bg-slate-900 p-5"
+                >
+                  <p className="text-xs text-cyan-300">{resource.category}</p>
+                  <h3 className="mt-2 font-semibold">{resource.name}</h3>
+                  <p className="mt-2 text-sm text-slate-400">
+                    {resource.description}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => openBooking(resource)}
+                    className="mt-4 rounded-lg border border-slate-700 px-4 py-2 text-sm hover:border-cyan-400"
+                  >
+                    Book this resource
+                  </button>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
       </section>
 
-      {selectedResource && (
+      {bookingResource && (
         <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/70 p-4">
           <section
             role="dialog"
             aria-modal="true"
-            aria-labelledby="booking-title"
-            className="my-auto w-full max-w-lg rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl"
+            aria-labelledby="confirm-booking-title"
+            className="my-auto w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6"
           >
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-sm text-cyan-400">
-                  Resource reservation
-                </p>
-
-                <h2
-                  id="booking-title"
-                  className="mt-1 text-2xl font-bold"
-                >
-                  {selectedResource.name}
+                <p className="text-sm text-cyan-300">Confirm reservation</p>
+                <h2 id="confirm-booking-title" className="mt-1 text-xl font-bold">
+                  {bookingResource.name}
                 </h2>
-
-                <p className="mt-2 text-sm text-slate-400">
-                  {selectedResource.category}
-                </p>
               </div>
-
               <button
                 type="button"
-                onClick={() => setSelectedResource(null)}
-                className="rounded-lg px-3 py-1 text-xl text-slate-400 hover:bg-slate-800 hover:text-white"
-                aria-label="Close booking form"
+                onClick={() => setBookingResource(null)}
+                aria-label="Close"
+                className="text-xl text-slate-400 hover:text-white"
               >
                 ×
               </button>
             </div>
 
-            <form
-              onSubmit={handleBookingSubmit}
-              className="mt-6 space-y-5"
-            >
+            <p className="mt-4 text-sm text-slate-400">
+              {startDate} · {timeLabel(startTime)} – {endDate} · {timeLabel(endTime)}
+            </p>
+
+            <form onSubmit={confirmBooking} className="mt-5 space-y-4">
               <div>
-                <label
-                  htmlFor="bookingUserId"
-                  className="mb-2 block text-sm font-medium"
-                >
+                <label htmlFor="userId" className="mb-2 block text-sm font-medium">
                   User ID
                 </label>
-
                 <input
-                  id="bookingUserId"
+                  id="userId"
                   type="number"
                   min="1"
                   step="1"
                   required
                   value={userId}
                   onChange={(event) => setUserId(event.target.value)}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 outline-none focus:border-cyan-400"
-                />
-
-                <p className="mt-1 text-xs text-slate-500">
-                  Demo mode: use an existing user ID.
-                </p>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="startTime"
-                  className="mb-2 block text-sm font-medium"
-                >
-                  Start time
-                </label>
-
-                <input
-                  id="startTime"
-                  type="datetime-local"
-                  required
-                  value={startTime}
-                  onChange={(event) => setStartTime(event.target.value)}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 outline-none focus:border-cyan-400"
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="endTime"
-                  className="mb-2 block text-sm font-medium"
-                >
-                  End time
-                </label>
-
-                <input
-                  id="endTime"
-                  type="datetime-local"
-                  required
-                  value={endTime}
-                  onChange={(event) => setEndTime(event.target.value)}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 outline-none focus:border-cyan-400"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-3 outline-none focus:border-cyan-400"
                 />
               </div>
 
               {bookingError && (
-                <div
-                  role="alert"
-                  className="rounded-lg border border-red-800 bg-red-950/40 p-3 text-sm text-red-300"
-                >
+                <p role="alert" className="rounded-lg border border-red-800 bg-red-950/40 p-3 text-sm text-red-300">
                   {bookingError}
-                </div>
+                </p>
               )}
 
-              <div className="flex gap-3 pt-2">
+              <div className="flex gap-3">
                 <button
                   type="button"
-                  onClick={() => setSelectedResource(null)}
+                  onClick={() => setBookingResource(null)}
                   disabled={bookingLoading}
-                  className="flex-1 rounded-lg border border-slate-700 px-4 py-3 font-medium hover:bg-slate-800 disabled:opacity-50"
+                  className="flex-1 rounded-lg border border-slate-700 px-4 py-3 hover:bg-slate-800"
                 >
-                  Cancel
+                  Back
                 </button>
-
                 <button
                   type="submit"
-                  disabled={bookingLoading}
-                  className="flex-1 rounded-lg bg-cyan-400 px-4 py-3 font-semibold text-slate-950 hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={bookingLoading || !validRange}
+                  className="flex-1 rounded-lg bg-emerald-400 px-4 py-3 font-semibold text-slate-950 hover:bg-emerald-300 disabled:opacity-50"
                 >
                   {bookingLoading ? "Booking..." : "Confirm booking"}
                 </button>
