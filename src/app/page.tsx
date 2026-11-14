@@ -44,8 +44,8 @@ function dateString(date: Date) {
 
 function timeLabel(value: string) {
   const [hours, minutes] = value.split(":").map(Number);
-  const date = new Date();
-  date.setHours(hours, minutes, 0, 0);
+  // Use a fixed date so formatting does not depend on the current render time.
+  const date = new Date(2000, 0, 1, hours, minutes, 0, 0);
   return date.toLocaleTimeString("en-IN", {
     hour: "numeric",
     minute: "2-digit",
@@ -72,7 +72,7 @@ const TIMES = Array.from({ length: 48 }, (_, index) => {
 });
 
 export default function Home() {
-  const today = dateString(new Date());
+  const [today, setToday] = useState("");
 
   const [resources, setResources] = useState<Resource[]>([]);
   const [category, setCategory] = useState("All");
@@ -94,11 +94,21 @@ export default function Home() {
       localStorage.removeItem("labmatch_user");
     }
   }, []);
-  const [startDate, setStartDate] = useState(today);
+  const [startDate, setStartDate] = useState("");
   const [startTime, setStartTime] = useState("10:00");
-  const initialEnd = addMinutes(today, "10:00", 60);
-  const [endDate, setEndDate] = useState(initialEnd.date);
-  const [endTime, setEndTime] = useState(initialEnd.time);
+  const [endDate, setEndDate] = useState("");
+  const [endTime, setEndTime] = useState("11:00");
+
+  // Set date defaults after the component mounts in the browser.
+  // This avoids calling new Date() during Next.js prerendering.
+  useEffect(() => {
+    const currentDate = dateString(new Date());
+    const defaultEnd = addMinutes(currentDate, "10:00", 60);
+    setToday(currentDate);
+    setStartDate(currentDate);
+    setEndDate(defaultEnd.date);
+    setEndTime(defaultEnd.time);
+  }, []);
 
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
