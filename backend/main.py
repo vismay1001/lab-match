@@ -304,6 +304,8 @@ def detect_profile(query: str) -> dict:
     if any(term in text for term in [
         "large language model training", "train a large language model",
         "large model training", "distributed model training", "train llm",
+        "llm training", "training llm", "train a llm",
+        "train a language model", "language model training",
     ]):
         return {
             "category": "GPU Workstation",
@@ -315,9 +317,18 @@ def detect_profile(query: str) -> dict:
             "camera_requirement": None,
         }
 
+    # LLM fine-tuning/tuning: include common short forms such as "LLM tuning".
+    # These phrases must resolve to GPU Workstation before semantic retrieval;
+    # otherwise ChromaDB's cross-category results could include printers/cameras.
     if any(term in text for term in [
-        "llm fine tuning", "fine tune an llm", "fine tune a language model",
-        "fine tune a transformer", "qlora", "lora fine tuning",
+        "llm fine tuning", "llm tuning", "tuning llm", "tune llm",
+        "fine tune llm", "fine tune an llm", "fine tuning llm", "fine tuning an llm",
+        "fine tune a language model", "fine tuning a language model",
+        "language model fine tuning", "language model tuning",
+        "fine tune a transformer", "transformer fine tuning",
+        "transformer tuning", "model fine tuning", "model tuning",
+        "parameter efficient fine tuning", "parameter efficient tuning",
+        "adapter tuning", "lora", "qlora", "peft", "finetuning",
     ]):
         return {
             "category": "GPU Workstation",
@@ -771,6 +782,14 @@ def run_search(request: SearchRequest, alternatives: bool):
         available = get_available_resources(
             ranked, request.start_time, request.end_time
         )
+
+        # Final guard: a recognized task must never receive another category,
+        # even if stale or inconsistent semantic-index metadata exists.
+        if required_category:
+            available = [
+                item for item in available
+                if item["category"] == required_category
+            ]
 
         return {
             "success": True,
