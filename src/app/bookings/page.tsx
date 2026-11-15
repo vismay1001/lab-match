@@ -51,6 +51,7 @@ export default function MyBookingsPage() {
 
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(false);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -161,16 +162,19 @@ export default function MyBookingsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-950">
-      <header className="border-b border-slate-200 px-6 py-4 flex items-center justify-between">
-        <a href="/" className="flex items-center gap-2 text-2xl font-bold tracking-tight">
-          Lab<span className="text-primary">Match</span>
-        </a>
+    <main className="min-h-screen bg-[#0a0e17] text-slate-100">
+      <header className="border-b border-slate-800 px-6 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <a href="/" className="flex items-center gap-2 text-2xl font-bold tracking-tight text-white md:hidden">
+            Lab<span className="text-primary">Match</span>
+          </a>
+          <h1 className="text-xl font-semibold text-white hidden md:block">My Bookings</h1>
+        </div>
 
         <nav>
           <a
             href="/"
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-400 hover:border-primary hover:text-primary transition"
+            className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-sm text-slate-300 hover:border-primary hover:text-white transition"
           >
             Browse resources
           </a>
@@ -300,14 +304,12 @@ export default function MyBookingsPage() {
                     <button
                       type="button"
                       onClick={() => void cancelBooking(booking)}
-                      disabled={
-                        // We'll use a local ref for cancellingId, but for simplicity
-                        // we'll just check if it's the current booking
-                        false
-                      }
+                      disabled={cancellingId === String(booking.booking_id)}
                       className="btn btn-danger rounded-lg px-4 py-2 text-sm font-medium text-error transition hover:bg-error/80 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      Cancel booking
+                      {cancellingId === String(booking.booking_id)
+                        ? "Cancelling..."
+                        : "Cancel booking"}
                     </button>
                   </div>
                 ) : null}

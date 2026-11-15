@@ -184,7 +184,7 @@ export async function POST(request: Request) {
       [Number(resourceId)]
     );
 
-    if (availabilityCheck.rowCount > 0) {
+    if ((availabilityCheck.rowCount ?? 0) > 0) {
       return NextResponse.json(
         {
           error:

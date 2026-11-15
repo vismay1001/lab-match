@@ -38,7 +38,7 @@ export default function RegisterPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+    <main className="min-h-screen bg-[#0a0e17] text-slate-100 flex items-center justify-center p-4">
       <section
         className="rounded-2xl bg-slate-800 border border-slate-500 w-full max-w-md p-8 shadow-lg"
       >
