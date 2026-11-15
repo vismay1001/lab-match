@@ -94,24 +94,62 @@ export default function Home() {
       localStorage.removeItem("labmatch_user");
     }
   }, []);
-  const [startDate, setStartDate] = useState("");
-  const [startTime, setStartTime] = useState("10:00");
-  const [endDate, setEndDate] = useState("");
-  const [endTime, setEndTime] = useState("11:00");
 
-  // Set date defaults after the component mounts in the browser.
-  // This avoids calling new Date() during Next.js prerendering.
+  // Persist booking resource and datetime selections across refreshes.
+  const persistedBookingResource = localStorage.getItem(
+    "labmatch_booking_resource"
+  );
+  const persistedStartDate = localStorage.getItem("labmatch_start_date") || today;
+  const persistedStartTime = localStorage.getItem(
+    "labmatch_start_time"
+  ) || "10:00";
+  const persistedEndDate = localStorage.getItem("labmatch_end_date");
+  const persistedEndTime = localStorage.getItem("labmatch_end_time");
+
+  const [startDate, setStartDate] = useState(
+    () => persistedStartDate as string
+  );
+  const [startTime, setStartTime] = useState(
+    () => persistedStartTime as string
+  );
+  const [endDate, setEndDate] = useState(
+    () => (persistedEndDate ? persistedEndDate : initialEnd.date)
+  );
+  const [endTime, setEndTime] = useState(
+    () => (persistedEndTime ? persistedEndTime : initialEnd.time)
+  );
+
+  // Sync persisted values back when state changes (one-way persistence).
   useEffect(() => {
-    const currentDate = dateString(new Date());
-    const defaultEnd = addMinutes(currentDate, "10:00", 60);
-    setToday(currentDate);
-    setStartDate(currentDate);
-    setEndDate(defaultEnd.date);
-    setEndTime(defaultEnd.time);
+    if (persistedBookingResource) {
+      try {
+        const resource = JSON.parse(persistedBookingResource) as Recommendation;
+        setBookingResource(resource);
+        // Clear the persisted resource now that it's been restored.
+        localStorage.removeItem("labmatch_booking_resource");
+        localStorage.removeItem("labmatch_start_date");
+        localStorage.removeItem("labmatch_start_time");
+        localStorage.removeItem("labmatch_end_date");
+        localStorage.removeItem("labmatch_end_time");
+      } catch {
+        localStorage.removeItem("labmatch_booking_resource");
+      }
+    }
+  }, [persistedBookingResource]);
+
+  useEffect(() => {
+    const raw = localStorage.getItem("labmatch_user");
+    if (!raw) return;
+    try {
+      const user = JSON.parse(raw) as { user_id?: number; name?: string };
+      if (user.user_id) setUserId(String(user.user_id));
+      if (user.name) setLoggedInName(user.name);
+    } catch {
+      localStorage.removeItem("labmatch_user");
+      window.location.href = "/login";
+    }
   }, []);
 
-  const [searching, setSearching] = useState(false);
-  const [searchError, setSearchError] = useState("");
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [profileMessage, setProfileMessage] = useState("");
   const [excludedResources, setExcludedResources] = useState<string[]>([]);
@@ -268,6 +306,20 @@ export default function Home() {
   function openBooking(resource: Recommendation) {
     setBookingResource(resource);
     setBookingError("");
+
+    // Persist the selected resource and current datetime for one-click restore.
+    try {
+      localStorage.setItem(
+        "labmatch_booking_resource",
+        JSON.stringify(resource)
+      );
+      localStorage.setItem("labmatch_start_date", startDate);
+      localStorage.setItem("labmatch_start_time", startTime);
+      localStorage.setItem("labmatch_end_date", endDate);
+      localStorage.setItem("labmatch_end_time", endTime);
+    } catch {
+      // Ignore localStorage quota errors.
+    }
   }
 
   async function confirmBooking(event: FormEvent<HTMLFormElement>) {
@@ -302,12 +354,17 @@ export default function Home() {
       const data: ApiResponse = await response.json();
 
       if (!response.ok) {
-        throw new Error(
+        // Provide meaningful feedback based on the error code.
+        const errorMessage =
           data.error ||
-            (data.code === "USER_BOOKING_CONFLICT"
-              ? "You already have a booking during this time."
-              : "This resource is no longer available for that time.")
-        );
+          (data.code === "USER_BOOKING_CONFLICT"
+            ? "You already have another booking during this time slot."
+            : data.code === "RESOURCE_ALREADY_ASSIGNED"
+              ? "This resource is already assigned to another person. Please choose a different resource or wait for the current assignment to be released."
+              : data.code === "RESOURCE_BOOKING_CONFLICT"
+                ? "This resource is already booked for that time slot."
+                : "Unable to create booking. Check the details and try again.");
+        throw new Error(errorMessage);
       }
 
       setSuccessMessage(
@@ -585,7 +642,7 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={() => openBooking(resource)}
-                    className="mt-5 w-full rounded-lg bg-cyan-400 px-4 py-3 font-semibold text-slate-950 hover:bg-cyan-300"
+                    className="mt-5 w-full rounded-lg bg-cyan-400 px-4 py-3 font-semibold text-slate-950 hover:bg-cyan-300 disabled:opacity-50 disabled:pointer-events-none"
                   >
                     Select and book
                   </button>
@@ -646,7 +703,7 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={() => openBooking(resource)}
-                    className="mt-4 rounded-lg border border-slate-700 px-4 py-2 text-sm hover:border-cyan-400"
+                    className="mt-4 rounded-lg border border-slate-700 px-4 py-2 text-sm hover:border-cyan-400 disabled:opacity-50 disabled:pointer-events-none"
                   >
                     Book this resource
                   </button>
