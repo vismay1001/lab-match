@@ -44,8 +44,8 @@ function dateString(date: Date) {
 
 function timeLabel(value: string) {
   const [hours, minutes] = value.split(":").map(Number);
-  const date = new Date();
-  date.setHours(hours, minutes, 0, 0);
+  // Use a fixed date so formatting does not depend on the current render time.
+  const date = new Date(2000, 0, 1, hours, minutes, 0, 0);
   return date.toLocaleTimeString("en-IN", {
     hour: "numeric",
     minute: "2-digit",
