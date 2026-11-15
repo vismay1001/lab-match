@@ -38,6 +38,17 @@ function getBookingConflictResponse(error: unknown) {
     );
   }
 
+  if (error.constraint === "one_active_booking_per_resource") {
+    return NextResponse.json(
+      {
+        error:
+          "This resource is already assigned to another person. Please choose a different resource or wait for the current assignment to be released.",
+        code: "RESOURCE_ALREADY_ASSIGNED",
+      },
+      { status: 409 }
+    );
+  }
+
   return NextResponse.json(
     {
       error: "This booking conflicts with an existing booking.",
@@ -157,6 +168,30 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: "endTime must be later than startTime." },
         { status: 400 }
+      );
+    }
+
+    // Proactive availability check with database-level locking to prevent race conditions.
+    const availabilityCheck = await pool.query(
+      `
+        SELECT 1
+        FROM bookings b
+        WHERE b.resource_id = $1
+          AND b.status IN ('pending', 'confirmed')
+        LIMIT 1
+        FOR UPDATE SKIP LOCKED;
+      `,
+      [Number(resourceId)]
+    );
+
+    if (availabilityCheck.rowCount > 0) {
+      return NextResponse.json(
+        {
+          error:
+            "This resource is already assigned to another person. Please choose a different resource or wait for the current assignment to be released.",
+          code: "RESOURCE_ALREADY_ASSIGNED",
+        },
+        { status: 409 }
       );
     }
 
