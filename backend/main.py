@@ -862,3 +862,200 @@ def recommend_resources(request: SearchRequest):
 @app.post("/search-alternatives")
 def search_alternatives(request: SearchRequest):
     return run_search(request, alternatives=True)
+
+
+@app.get("/api/dashboard/resources")
+def dashboard_resources():
+    """Return dashboard statistics for resources."""
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                # Total resources
+                cur.execute("SELECT COUNT(*) FROM resources")
+                total_resources = cur.fetchone()["count"]
+
+                # Active resources
+                cur.execute("SELECT COUNT(*) FROM resources WHERE is_active = TRUE")
+                active_resources = cur.fetchone()["count"]
+
+                # Inactive resources
+                cur.execute("SELECT COUNT(*) FROM resources WHERE is_active = FALSE")
+                inactive_resources = cur.fetchone()["count"]
+
+                # Resources by category
+                cur.execute(
+                    """
+                    SELECT c.name, COUNT(r.resource_id) as count
+                    FROM resources r
+                    JOIN categories c ON c.category_id = r.category_id
+                    GROUP BY c.name
+                    ORDER BY count DESC
+                    """
+                )
+                resources_by_category = cur.fetchall()
+
+                return {
+                    "success": True,
+                    "total_resources": total_resources,
+                    "active_resources": active_resources,
+                    "inactive_resources": inactive_resources,
+                    "resources_by_category": {
+                        row["name"]: row["count"] for row in resources_by_category
+                    },
+                }
+    except Exception as exc:
+        print(f"Dashboard resources failed: {exc}")
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to fetch dashboard data.",
+        ) from exc
+
+
+@app.get("/api/dashboard/users")
+def dashboard_users():
+    """Return dashboard statistics for users."""
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM users")
+                total_users = cur.fetchone()["count"]
+
+                cur.execute(
+                    """
+                    SELECT role, COUNT(*) as count
+                    FROM users
+                    GROUP BY role
+                    """
+                )
+                users_by_role = cur.fetchall()
+
+                return {
+                    "success": True,
+                    "total_users": total_users,
+                    "users_by_role": {row["role"]: row["count"] for row in users_by_role},
+                }
+    except Exception as exc:
+        print(f"Dashboard users failed: {exc}")
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to fetch dashboard data.",
+        ) from exc
+
+
+@app.get("/api/dashboard/assignments")
+def dashboard_assignments():
+    """Return dashboard statistics for assignments/bookings."""
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                # Total bookings
+                cur.execute("SELECT COUNT(*) FROM bookings")
+                total_bookings = cur.fetchone()["count"]
+
+                # Confirmed bookings
+                cur.execute(
+                    """
+                    SELECT COUNT(*) FROM bookings
+                    WHERE status = 'confirmed'
+                    """
+                )
+                confirmed_bookings = cur.fetchone()["count"]
+
+                # Pending bookings
+                cur.execute(
+                    """
+                    SELECT COUNT(*) FROM bookings
+                    WHERE status = 'pending'
+                    """
+                )
+                pending_bookings = cur.fetchone()["count"]
+
+                # Cancelled bookings
+                cur.execute(
+                    """
+                    SELECT COUNT(*) FROM bookings
+                    WHERE status = 'cancelled'
+                    """
+                )
+                cancelled_bookings = cur.fetchone()["count"]
+
+                # Resources with active bookings (at most one per resource due to constraint)
+                cur.execute("""
+                    SELECT COUNT(DISTINCT resource_id) as resources_with_bookings
+                    FROM bookings
+                    WHERE status IN ('pending', 'confirmed')
+                """)
+                resources_with_bookings = cur.fetchone()["resources_with_bookings"]
+
+                # Average booking duration
+                cur.execute("""
+                    SELECT AVG(EXTRACT(EPOCH FROM (end_time - start_time))) / 60 as avg_minutes
+                    FROM bookings
+                    WHERE status IN ('pending', 'confirmed')
+                """)
+                avg_duration_result = cur.fetchone()
+                avg_duration = round(float(avg_duration_result["avg_minutes"])) if avg_duration_result and avg_duration_result["avg_minutes"] else 0
+
+                return {
+                    "success": True,
+                    "total_bookings": total_bookings,
+                    "confirmed_bookings": confirmed_bookings,
+                    "pending_bookings": pending_bookings,
+                    "cancelled_bookings": cancelled_bookings,
+                    "resources_with_bookings": resources_with_bookings,
+                    "average_booking_duration_minutes": avg_duration,
+                }
+    except Exception as exc:
+        print(f"Dashboard assignments failed: {exc}")
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to fetch dashboard data.",
+        ) from exc
+
+
+@app.get("/api/dashboard/recent-activity")
+def dashboard_recent_activity():
+    """Return recent activity for the dashboard."""
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT b.booking_id, b.status, b.start_time, b.end_time,
+                           u.name as user_name, r.name as resource_name
+                    FROM bookings b
+                    JOIN users u ON u.user_id = b.user_id
+                    JOIN resources r ON r.resource_id = b.resource_id
+                    WHERE b.status IN ('pending', 'confirmed')
+                    ORDER BY b.created_at DESC
+                    LIMIT 5
+                """)
+                activities = cur.fetchall()
+
+                return {
+                    "success": True,
+                    "recent_activity": [
+                        {
+                            "booking_id": str(activity["booking_id"]),
+                            "status": activity["status"],
+                            "user_name": activity["user_name"],
+                            "resource_name": activity["resource_name"],
+                            "start_time": (
+                                activity["start_time"].strftime("%Y-%m-%d %H:%M")
+                                if hasattr(activity["start_time"], "strftime")
+                                else str(activity["start_time"])
+                            ),
+                            "end_time": (
+                                activity["end_time"].strftime("%Y-%m-%d %H:%M")
+                                if hasattr(activity["end_time"], "strftime")
+                                else str(activity["end_time"])
+                            ),
+                        }
+                        for activity in activities
+                    ],
+                }
+    except Exception as exc:
+        print(f"Dashboard recent activity failed: {exc}")
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to fetch recent activity.",
+        ) from exc
