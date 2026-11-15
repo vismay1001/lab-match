@@ -13,6 +13,7 @@ type Resource = {
   capabilities?: string;
   specifications?: Record<string, unknown>;
   is_active?: boolean;
+  recommendation_reason?: string;
 };
 
 type Recommendation = Resource & {
@@ -71,102 +72,93 @@ const TIMES = Array.from({ length: 48 }, (_, index) => {
   return { value, label: timeLabel(value) };
 });
 
-function useLocalStorage(key: string, defaultValue: string) {
-  const [storedValue, setStoredValue] = useState<string>(() => {
-    try {
-      const item = localStorage.getItem(key);
-      return item ? item : defaultValue;
-    } catch {
-      return defaultValue;
-    }
-  });
+export default function Home() {
+  const [today, setToday] = useState("");
+  const [persistedStartDate, setPersistedStartDate] = useState("");
+  const [persistedStartTime, setPersistedStartTime] = useState("10:00");
+  const [persistedEndDate, setPersistedEndDate] = useState("");
+  const [persistedEndTime, setPersistedEndTime] = useState("11:00");
 
-  const setValue = (value: string) => {
+  const [resources, setResources] = useState<Resource[]>([]);
+  const [category, setCategory] = useState("All");
+  const [loading, setLoading] = useState(true);
+  const [pageError, setPageError] = useState("");
+
+  const [task, setTask] = useState("");
+  const [userId, setUserId] = useState("");
+  const [loggedInName, setLoggedInName] = useState("");
+
+  const [startDate, setStartDate] = useState("");
+  const [startTime, setStartTime] = useState("10:00");
+  const [endDate, setEndDate] = useState("");
+  const [endTime, setEndTime] = useState("11:00");
+
+  useEffect(() => {
+    const currentToday = dateString(new Date());
+    setToday(currentToday);
+
+    const raw = localStorage.getItem("labmatch_user");
+    if (raw) {
+      try {
+        const user = JSON.parse(raw) as { user_id?: number; name?: string };
+        if (user.user_id) setUserId(String(user.user_id));
+        if (user.name) setLoggedInName(user.name);
+      } catch {
+        localStorage.removeItem("labmatch_user");
+      }
+    }
+
+    const savedStart = localStorage.getItem("labmatch_start_date");
+    const savedStartTime = localStorage.getItem("labmatch_start_time");
+    const savedEnd = localStorage.getItem("labmatch_end_date");
+    const savedEndTime = localStorage.getItem("labmatch_end_time");
+
+    if (savedStart && savedEnd) {
+      setPersistedStartDate(savedStart);
+      setPersistedStartTime(savedStartTime || "10:00");
+      setPersistedEndDate(savedEnd);
+      setPersistedEndTime(savedEndTime || "11:00");
+    }
+
+    setStartDate(savedStart || currentToday);
+    if (savedStartTime) setStartTime(savedStartTime);
+    setEndDate(savedEnd || currentToday);
+    if (savedEndTime) setEndTime(savedEndTime);
+  }, []);
+
+  useEffect(() => {
+    if (!startDate) return;
     try {
-      localStorage.setItem(key, value);
+      localStorage.setItem("labmatch_start_date", startDate);
+      localStorage.setItem("labmatch_start_time", startTime);
+      localStorage.setItem("labmatch_end_date", endDate);
+      localStorage.setItem("labmatch_end_time", endTime);
     } catch {
       // Ignore quota errors
     }
-    setStoredValue(value);
-  };
+  }, [startDate, startTime, endDate, endTime]);
 
-  return [storedValue, setValue] as const;
-}
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState("");
+  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [profileMessage, setProfileMessage] = useState("");
+  const [excludedResources, setExcludedResources] = useState<string[]>([]);
+  const [hasSearched, setHasSearched] = useState(false);
 
-// Persisted datetime state
-const [
-  persistedStartDate,
-  setPersistedStartDate,
-] = useLocalStorage("labmatch_start_date", dateString(new Date()));
-const [
-  persistedStartTime,
-  setPersistedStartTime,
-] = useLocalStorage("labmatch_start_time", "10:00");
-const [
-  persistedEndDate,
-  setPersistedEndDate,
-] = useLocalStorage("labmatch_end_date", "");
-const [
-  persistedEndTime,
-  setPersistedEndTime,
-] = useLocalStorage("labmatch_end_time", "");
+  const [bookingResource, setBookingResource] = useState<Recommendation | null>(null);
+  const [bookingLoading, setBookingLoading] = useState(false);
+  const [bookingError, setBookingError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
 
-const today = dateString(new Date());
-
-const [resources, setResources] = useState<Resource[]>([]);
-const [category, setCategory] = useState("All");
-const [loading, setLoading] = useState(true);
-const [pageError, setPageError] = useState("");
-
-const [task, setTask] = useState("");
-const [userId, setUserId] = useState("");
-const [loggedInName, setLoggedInName] = useState("");
-
-useEffect(() => {
-  const raw = localStorage.getItem("labmatch_user");
-  if (!raw) return;
-  try {
-    const user = JSON.parse(raw) as { user_id?: number; name?: string };
-    if (user.user_id) setUserId(String(user.user_id));
-    if (user.name) setLoggedInName(user.name);
-  } catch {
-    localStorage.removeItem("labmatch_user");
-  }
-}, []);
-
-const [startDate, setStartDate] = useState(() => persistedStartDate);
-const [startTime, setStartTime] = useState(() => persistedStartTime);
-const [endDate, setEndDate] = useState(() => (persistedEndDate ? persistedEndDate : today));
-const [endTime, setEndTime] = useState(() => (persistedEndTime ? persistedEndTime : "11:00"));
-
-useEffect(() => {
-  // Sync persisted values when state changes
-  setPersistedStartDate(startDate);
-  setPersistedStartTime(startTime);
-  if (persistedEndDate) {
-    setPersistedEndDate(endDate);
-    setPersistedEndTime(endTime);
-  }
-}, [startDate, startTime, endDate, endTime]);
-
-const [searching, setSearching] = useState(false);
-const [searchError, setSearchError] = useState("");
-const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
-const [profileMessage, setProfileMessage] = useState("");
-const [excludedResources, setExcludedResources] = useState<string[]>([]);
-const [hasSearched, setHasSearched] = useState(false);
-
-const [bookingResource, setBookingResource] = useState<Recommendation | null>(null);
-const [bookingLoading, setBookingLoading] = useState(false);
-const [bookingError, setBookingError] = useState("");
-const [successMessage, setSuccessMessage] = useState("");
-
-const start = new Date(`${startDate}T${startTime}:00`);
-const end = new Date(`${endDate}T${endTime}:00`);
-const validRange =
-  Number.isFinite(start.getTime()) &&
-  Number.isFinite(end.getTime()) &&
-  end.getTime() > start.getTime();
+  const start = startDate && startTime ? new Date(`${startDate}T${startTime}:00`) : null;
+  const end = endDate && endTime ? new Date(`${endDate}T${endTime}:00`) : null;
+  const validRange = Boolean(
+    start &&
+    end &&
+    Number.isFinite(start.getTime()) &&
+    Number.isFinite(end.getTime()) &&
+    end.getTime() > start.getTime()
+  );
 
 // Load resources on mount
 useEffect(() => {
@@ -202,6 +194,12 @@ function openBooking(resource: Recommendation) {
   setBookingError("");
 }
 
+function setDuration(minutes: number) {
+  const next = addMinutes(startDate, startTime, minutes);
+  setEndDate(next.date);
+  setEndTime(next.time);
+}
+
 async function recommendResources(event: FormEvent<HTMLFormElement>) {
   event.preventDefault();
 
@@ -210,7 +208,7 @@ async function recommendResources(event: FormEvent<HTMLFormElement>) {
     return;
   }
 
-  if (!validRange) {
+  if (!validRange || !start || !end) {
     setSearchError("End time must be later than start time.");
     return;
   }
@@ -291,7 +289,7 @@ async function confirmBooking(event: FormEvent<HTMLFormElement>) {
     return;
   }
 
-  if (!validRange) {
+  if (!validRange || !start || !end) {
     setBookingError("Choose a valid start and end time.");
     return;
   }
@@ -377,17 +375,21 @@ useEffect(() => {
       localStorage.removeItem("labmatch_booking_resource");
     }
   }
-}, [persistedBookingResource]);
+}, []);
 
 // Sync datetime persistence on navigation away
 useEffect(() => {
   // Store selections when user navigates away or closes the tab
   return () => {
     try {
-      localStorage.setItem(
-        "labmatch_booking_resource",
-        bookingResource ? JSON.stringify(bookingResource) : null
-      );
+      if (bookingResource) {
+        localStorage.setItem(
+          "labmatch_booking_resource",
+          JSON.stringify(bookingResource)
+        );
+      } else {
+        localStorage.removeItem("labmatch_booking_resource");
+      }
       localStorage.setItem("labmatch_start_date", startDate);
       localStorage.setItem("labmatch_start_time", startTime);
       localStorage.setItem("labmatch_end_date", endDate);
@@ -399,67 +401,71 @@ useEffect(() => {
 }, [bookingResource, startDate, startTime, endDate, endTime]);
 
 return (
-  <main className="min-h-screen bg-slate-50 text-slate-950">
-    <div class="max-w-7xl mx-auto px-6 py-6">
+  <main className="min-h-screen bg-[#0a0e17] text-slate-100">
+    <div className="max-w-7xl mx-auto px-6 py-6">
       {/* Header */}
       <header className="mb-8">
         <div className="flex items-center justify-between gap-4">
-          <a href="/" className="flex items-center gap-2 text-2xl font-bold tracking-tight">
+          <a href="/" className="flex items-center gap-2 text-2xl font-bold tracking-tight text-white md:hidden">
             Lab<span className="text-primary">Match</span>
           </a>
+          <div className="hidden md:block">
+            <h1 className="text-xl font-semibold text-white">Resource Booking</h1>
+            <p className="text-xs text-slate-400">Match research & compute tasks to university hardware</p>
+          </div>
           {loggedInName ? (
-            <>
-              <span className="text-sm text-slate-500">Hi, {loggedInName}</span>
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-slate-400">Hi, <strong className="text-white">{loggedInName}</strong></span>
               <button
                 type="button"
                 onClick={() => {
                   localStorage.removeItem("labmatch_user");
                   window.location.href = "/login";
                 }}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-400 hover:border-cyan-400 hover:text-primary transition"
+                className="rounded-lg border border-slate-700 bg-slate-800/80 px-4 py-2 text-sm text-slate-300 hover:border-primary hover:text-white transition"
               >
                 Log out
               </button>
-            </>
+            </div>
           ) : (
-            <>
+            <div className="flex items-center gap-3">
               <a
                 href="/login"
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-400 hover:border-cyan-400 hover:text-primary transition"
+                className="rounded-lg border border-slate-700 bg-slate-800/80 px-4 py-2 text-sm text-slate-300 hover:border-primary hover:text-white transition"
               >
                 Log in
               </a>
               <a
                 href="/register"
-                className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-primary/90"
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover transition"
               >
                 Register
               </a>
-            </>
+            </div>
           )}
         </div>
       </header>
 
       {/* Hero / Search Section */}
-      <section className="rounded-2xl border border-slate-300 bg-slate-50 p-6 sm:p-8 shadow-sm">
-        <p className="mb-4 text-sm font-medium uppercase tracking-wider text-slate-500">
+      <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 sm:p-8 shadow-sm">
+        <p className="mb-4 text-sm font-medium uppercase tracking-wider text-slate-400">
           Intelligent campus resource booking
         </p>
 
-        <h1 className="mt-2 text-4xl sm:text-5xl font-bold tracking-tight">
+        <h1 className="mt-2 text-4xl sm:text-5xl font-bold tracking-tight text-white">
           What are you
           <br />
           <span className="text-slate-400">planning to do?</span>
         </h1>
 
-        <p className="mt-4 max-w-2xl text-slate-400">
+        <p className="mt-4 max-w-2xl text-slate-300">
           Describe your project. LabMatch matches your task against resource
           capabilities, filters unsuitable hardware, and checks availability.
         </p>
 
         {/* Persistence hint */}
         {persistedStartDate && persistedEndDate && !hasSearched && (
-          <div className="mt-4 p-3 rounded-xl bg-slate-950/30 border border-slate-600">
+          <div className="mt-4 p-3 rounded-xl bg-slate-800/80 border border-slate-700">
             <p className="text-xs text-slate-400">
               Previous selections detected — restoring your session.
             </p>
@@ -472,9 +478,9 @@ return (
 
         <form
           onSubmit={recommendResources}
-          className="mt-8 rounded-2xl border border-slate-300 bg-slate-50 p-6 sm:p-8"
+          className="mt-8 rounded-2xl border border-slate-800 bg-slate-900/90 p-6 sm:p-8 shadow-inner"
         >
-          <label htmlFor="task" className="block mb-2 font-medium">
+          <label htmlFor="task" className="block mb-2 font-medium text-white">
             Describe your task
           </label>
 
@@ -486,16 +492,16 @@ return (
             value={task}
             onChange={(event) => setTask(event.target.value)}
             placeholder="Example: Train a CNN for image classification using PyTorch."
-            className="w-full rounded-xl border border-slate-400 bg-slate-800 px-4 py-3 outline-none placeholder:text-slate-400 focus:border-primary resize-none"
+            className="w-full rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-white outline-none placeholder:text-slate-400 focus:border-primary resize-none"
           />
 
-          <p className="mt-3 text-xs text-slate-500">
+          <p className="mt-3 text-xs text-slate-400">
             Examples: introductory ML, CNN training, LLM fine-tuning, 3D rendering.
           </p>
 
           <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 mt-6">
             <div>
-              <label htmlFor="startDate" className="mb-2 block text-sm font-medium">
+              <label htmlFor="startDate" className="mb-2 block text-sm font-medium text-slate-300">
                 Start date
               </label>
               <input
@@ -505,18 +511,18 @@ return (
                 required
                 value={startDate}
                 onChange={(event) => setStartDate(event.target.value)}
-                className="w-full rounded-lg border border-slate-400 bg-slate-800 px-4 py-3 outline-none focus:border-primary"
+                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-white outline-none focus:border-primary"
               />
             </div>
             <div>
-              <label htmlFor="startTime" className="mb-2 block text-sm font-medium">
+              <label htmlFor="startTime" className="mb-2 block text-sm font-medium text-slate-300">
                 Start time
               </label>
               <select
                 id="startTime"
                 value={startTime}
                 onChange={(event) => setStartTime(event.target.value)}
-                className="w-full rounded-lg border border-slate-400 bg-slate-800 px-4 py-3 outline-none focus:border-primary"
+                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-white outline-none focus:border-primary"
               >
                 {TIMES.map((item) => (
                   <option key={item.value} value={item.value}>
@@ -526,7 +532,7 @@ return (
               </select>
             </div>
             <div>
-              <label htmlFor="endDate" className="mb-2 block text-sm font-medium">
+              <label htmlFor="endDate" className="mb-2 block text-sm font-medium text-slate-300">
                 End date
               </label>
               <input
@@ -536,18 +542,18 @@ return (
                 required
                 value={endDate}
                 onChange={(event) => setEndDate(event.target.value)}
-                className="w-full rounded-lg border border-slate-400 bg-slate-800 px-4 py-3 outline-none focus:border-primary"
+                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-white outline-none focus:border-primary"
               />
             </div>
             <div>
-              <label htmlFor="endTime" className="mb-2 block text-sm font-medium">
+              <label htmlFor="endTime" className="mb-2 block text-sm font-medium text-slate-300">
                 End time
               </label>
               <select
                 id="endTime"
                 value={endTime}
                 onChange={(event) => setEndTime(event.target.value)}
-                className="w-full rounded-lg border border-slate-400 bg-slate-800 px-3 py-3 outline-none focus:border-primary"
+                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-3 text-white outline-none focus:border-primary"
               >
                 {TIMES.map((item) => (
                   <option key={item.value} value={item.value}>
@@ -568,7 +574,7 @@ return (
                 key={duration.value}
                 type="button"
                 onClick={() => setDuration(duration.value)}
-                className="rounded-lg border border-slate-400 px-3 py-2 text-sm text-slate-400 hover:border-primary hover:text-primary transition"
+                className="rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-sm text-slate-300 hover:border-primary hover:text-white transition"
               >
                 {duration.label}
               </button>
@@ -584,7 +590,7 @@ return (
           <button
             type="submit"
             disabled={searching || !validRange}
-            className="mt-6 w-full rounded-xl bg-primary px-5 py-3 font-semibold text-slate-950 transition hover:bg-primary/90 disabled:opacity-50 sm:w-auto"
+            className="mt-6 w-full rounded-xl bg-primary px-5 py-3 font-semibold text-white transition hover:bg-primary-hover disabled:opacity-50 sm:w-auto"
           >
             {searching ? "Finding suitable resources..." : "Find my resources"}
           </button>
@@ -698,7 +704,7 @@ return (
       {/* Browse All Resources Section */}
       <section className="mt-14">
         <div className="mb-4">
-          <h2 className="text-2xl font-bold">Browse all resources</h2>
+          <h2 className="text-2xl font-bold text-white">Browse all resources</h2>
           <p className="mt-1 text-sm text-slate-400">
             Browse the inventory directly if you already know what you need.
           </p>
@@ -710,10 +716,10 @@ return (
               key={item}
               type="button"
               onClick={() => setCategory(item)}
-              className={`rounded-full border px-4 py-2 text-sm ${
+              className={`rounded-full border px-4 py-2 text-sm transition ${
                 category === item
-                  ? "border-primary bg-primary/5 text-primary"
-                  : "border-slate-400 text-slate-400 hover:border-primary hover:text-primary"
+                  ? "border-primary bg-primary text-white font-medium"
+                  : "border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-500 hover:text-white"
               }`}
             >
               {item}
@@ -725,11 +731,11 @@ return (
           {filteredResources.map((resource) => (
             <article
               key={resource.resource_id}
-              className="rounded-xl bg-slate-800 p-5 border border-slate-500/20 hover:bg-slate-700 transition-colors"
+              className="rounded-xl bg-slate-800 p-5 border border-slate-700 hover:bg-slate-700 transition-colors"
             >
-              <p className="text-xs text-slate-400">{resource.category}</p>
-              <h3 className="mt-2 font-semibold">{resource.name}</h3>
-              <p className="mt-2 text-sm text-slate-400">
+              <p className="text-xs text-primary font-medium">{resource.category}</p>
+              <h3 className="mt-2 font-semibold text-white">{resource.name}</h3>
+              <p className="mt-2 text-sm text-slate-300">
                 {resource.description}
               </p>
 
@@ -769,14 +775,12 @@ return (
                   Book this resource
                 </button>
               </article>
-            </article>
-          ))}
+            ))}
         </div>
       </section>
     </div>
-  </main>
 
-  {/* Booking Dialog */}
+    {/* Booking Dialog */}
   {bookingResource && (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4">
       <section
@@ -840,3 +844,4 @@ return (
   )}
 </main>
 );
+}

@@ -58,14 +58,11 @@ export default function DashboardPage() {
         setLoading(true);
         setError("");
 
-        const response = await fetch(
-          "/api/dashboard?endpoint=resources&endpoint=users&endpoint=assignments&endpoint=recent-activity",
-          {
-            headers: {
-              "Content-Type": "application/json",
-            },
-          }
-        );
+        const response = await fetch("/api/dashboard", {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
 
         if (!response.ok) {
           throw new Error("Unable to fetch dashboard data.");
@@ -87,8 +84,8 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-slate-50 flex items-center justify-center p-8">
-        <div className="rounded-xl bg-slate-800 p-8 text-center">
+      <main className="min-h-screen bg-[#0a0e17] text-slate-100 flex items-center justify-center p-8">
+        <div className="rounded-xl bg-slate-800 p-8 text-center border border-slate-700">
           <div className="skeleton h-16 w-48 mx-auto mb-4"></div>
           <p className="text-slate-400">Loading dashboard...</p>
         </div>
@@ -98,13 +95,16 @@ export default function DashboardPage() {
 
   if (error) {
     return (
-      <main className="min-h-screen bg-slate-50">
+      <main className="min-h-screen bg-[#0a0e17] text-slate-100 flex items-center justify-center p-8">
         <div className="mx-auto max-w-2xl p-6 text-center">
           <p className="rounded-xl bg-error/10 border border-error p-4 text-sm text-error mb-4">
             {error}
           </p>
           <button
-            onClick={() => setError("")}
+            onClick={() => {
+              setError("");
+              setLoading(true);
+            }}
             className="btn btn-primary mt-4"
           >
             Retry
@@ -118,11 +118,21 @@ export default function DashboardPage() {
     return null;
   }
 
-  const { resources, users, assignments, recentActivity } = data;
+  const resources = data.resources ?? { total: 0, active: 0, inactive: 0 };
+  const users = data.users ?? { total: 0, byRole: {} };
+  const assignments = data.assignments ?? {
+    total: 0,
+    confirmed: 0,
+    pending: 0,
+    cancelled: 0,
+    resourcesWithBookings: 0,
+    averageBookingDurationMinutes: 0,
+  };
+  const recentActivity = data.recentActivity ?? [];
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-950">
-      <div class="max-w-7xl mx-auto px-6 py-8">
+    <main className="min-h-screen bg-[#0a0e17] text-slate-100">
+      <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           {/* Resources Card */}

@@ -48,7 +48,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full antialiased">
-        <div class="flex min-h-screen">
+        <div className="flex min-h-screen">
           {/* Sidebar */}
           <aside className="sidebar">
             <a
@@ -63,25 +63,18 @@ export default function RootLayout({
                 <a
                   key={link.href}
                   href={link.href}
-                  className="sidebar-nav-link">
-                  <span className={getNavClassName(link)}>
-                    {link.label}
-                  </span>
+                  className={getNavClassName(link)}
+                >
+                  {link.label}
                 </a>
               ))}
             </nav>
           </aside>
 
           {/* Main Content */}
-          <main className="main-content">
-            <header className="header">
-              <h1 className="header-title">
-                Lab<span className="text-primary">Match</span>
-              </h1>
-            </header>
-
+          <div className="main-content flex-1">
             {children}
-          </main>
+          </div>
         </div>
       </body>
     </html>
